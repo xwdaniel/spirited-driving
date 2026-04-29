@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node
+node_modules/
+package-lock.json
+
+# Build / generated output
+cache/
+test-results/
+playwright-report/
+
+# Pipeline output (regenerate with generate_test_data.py)
+apexline_segments.geojson
+
+# Secrets
+.env
