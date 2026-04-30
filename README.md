@@ -48,6 +48,18 @@ npm install
 npx playwright install
 ```
 
+### Mapbox token
+
+The frontend requires a Mapbox GL JS token to render the map. Get a free token at [mapbox.com](https://account.mapbox.com/access-tokens/) (sign up, then copy the default public token from your account dashboard).
+
+Set it as an environment variable before starting the server:
+
+```bash
+export MAPBOX_TOKEN=your_token_here
+```
+
+The server reads this variable and injects it into the frontend at runtime. Without it the map will not load.
+
 ## Running
 
 ```bash
