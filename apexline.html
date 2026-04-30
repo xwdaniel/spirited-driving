@@ -1137,7 +1137,10 @@ document.getElementById('tab-route').addEventListener('click', function() {
 
     var isLoop  = loopChk.checked;
     var hours   = parseFloat(hoursSlider.value);
-    var budgetKm = hours * AVG_SPEED_KMH;
+    // Scale by tortuosity: road distance >> haversine on winding roads, and
+    // Mapbox driving speed on country lanes is slower than AVG_SPEED_KMH.
+    var ROAD_TORTUOSITY = 2.2;
+    var budgetKm = hours * AVG_SPEED_KMH / ROAD_TORTUOSITY;
     var btn     = document.getElementById('plan-btn');
 
     var endPt = (isLoop || !routeEnd)
