@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+geopandas
+shapely
+numpy
+osmnx
+requests
+srtm.py

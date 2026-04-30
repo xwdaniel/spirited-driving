@@ -41,9 +41,10 @@ Road types included: `primary`, `secondary`, `tertiary`, `trunk`, and their link
 
 ## Setup
 
-Install Python dependencies (osmnx, geopandas, shapely, fastapi, uvicorn, requests, numpy) and Node dependencies:
+Install Python and Node dependencies:
 
 ```bash
+pip install -r requirements.txt
 npm install
 npx playwright install
 ```
@@ -55,10 +56,10 @@ The frontend requires a Mapbox GL JS token to render the map. Get a free token a
 Set it as an environment variable before starting the server:
 
 ```bash
-export MAPBOX_TOKEN=your_token_here
+export MAPBOX_TOKEN=...
 ```
 
-The server reads this variable and injects it into the frontend at runtime. Without it the map will not load.
+The server exposes the token via `GET /config`, which the frontend fetches on load. Without it the map will not load.
 
 ## Running
 
@@ -84,7 +85,7 @@ The frontend is a single self-contained file (`apexline.html`) with no build ste
 ## Testing
 
 ```bash
-# Python unit tests (89 tests, no internet required)
+# Python unit tests (no internet required)
 python3 -m pytest tests/
 
 # Pipeline tests only
