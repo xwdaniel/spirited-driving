@@ -202,6 +202,58 @@ test.describe('greedyWaypoints budget', () => {
   });
 });
 
+// ── sampleEvenlyByDist ────────────────────────────────────────────────────
+
+test.describe('sampleEvenlyByDist', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoApp(page);
+    await waitForList(page);
+  });
+
+  test('returns full array when length <= n', async ({ page }) => {
+    const result = await page.evaluate(() =>
+      window.sampleEvenlyByDist([[0,0],[1,0],[2,0]], 9).length);
+    expect(result).toBe(3);
+  });
+
+  test('returns exactly n elements when length > n', async ({ page }) => {
+    // 100 points uniformly spaced
+    const pts = Array.from({length: 100}, (_, i) => [i * 0.001, 53.0]);
+    const count = await page.evaluate((p) =>
+      window.sampleEvenlyByDist(p, 9).length, pts);
+    expect(count).toBe(9);
+  });
+
+  test('always includes first and last points', async ({ page }) => {
+    const pts = Array.from({length: 50}, (_, i) => [i * 0.002, 53.0]);
+    const result = await page.evaluate((p) => {
+      const s = window.sampleEvenlyByDist(p, 9);
+      return { first: s[0], last: s[s.length - 1] };
+    }, pts);
+    expect(result.first[0]).toBeCloseTo(0, 5);
+    expect(result.last[0]).toBeCloseTo(pts[49][0], 5);
+  });
+
+  // Regression: asymmetric loop where sampleEvenly-by-index drops the turnaround.
+  // 200 geometry coords going east to Buntingford-equivalent then returning.
+  // The midpoint by distance (coord 100) is the easternmost point.
+  // sampleEvenlyByDist must include a coord within 2km of it.
+  test('captures the geographic peak of a non-uniform route (regression for Buntingford)', async ({ page }) => {
+    // 200 coords: 0-99 outbound at ~200m each, 100-199 return at ~200m each
+    const coords = [
+      ...Array.from({length: 100}, (_, i) => [-1.79 + i * 0.0025, 53.38]),  // east
+      ...Array.from({length: 100}, (_, i) => [-1.54 - i * 0.0025, 53.38]),  // return west
+    ];
+    const peak = coords[99]; // farthest east = [-1.54 + 0.0025, 53.38] ≈ the turnaround
+    const result = await page.evaluate(([coords, peak]) => {
+      const sampled = window.sampleEvenlyByDist(coords, 11); // 9 inner + 2 ends
+      // check that one sampled point is within ~0.005 lng of the peak
+      return sampled.some(w => Math.abs(w[0] - peak[0]) < 0.005);
+    }, [coords, peak]);
+    expect(result).toBe(true);
+  });
+});
+
 // ── Google Maps URL waypoint sampling ─────────────────────────────────────
 
 // 12-segment fixture for testing URL waypoint sampling
