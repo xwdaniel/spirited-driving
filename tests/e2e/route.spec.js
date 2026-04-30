@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { gotoApp, gotoAppEmpty, waitForList, setSlider } from './helpers.js';
+import { gotoApp, gotoAppEmpty, waitForList, setSlider, gotoAppWith, INITIAL_GEOJSON } from './helpers.js';
 
 // ── Tab navigation ─────────────────────────────────────────────────────────
 
@@ -133,5 +133,136 @@ test.describe('Pin button', () => {
     const btn = page.locator('.road-card .pin-btn').first();
     await btn.click();
     await expect(btn).toHaveClass(/pinned/);
+  });
+});
+
+// ── sampleEvenly ───────────────────────────────────────────────────────────
+
+test.describe('sampleEvenly', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoApp(page);
+    await waitForList(page);
+  });
+
+  test('returns full array when length <= n', async ({ page }) => {
+    const result = await page.evaluate(() => window.sampleEvenly([1, 2, 3], 5));
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  test('returns exactly n elements when length > n', async ({ page }) => {
+    const result = await page.evaluate(() => window.sampleEvenly([0,1,2,3,4,5,6,7,8,9], 4));
+    expect(result).toHaveLength(4);
+  });
+
+  test('first element is always arr[0]', async ({ page }) => {
+    const result = await page.evaluate(() => window.sampleEvenly([10,20,30,40,50], 3));
+    expect(result[0]).toBe(10);
+  });
+
+  test('last element is always arr[arr.length-1]', async ({ page }) => {
+    const result = await page.evaluate(() => window.sampleEvenly([10,20,30,40,50], 3));
+    expect(result[result.length - 1]).toBe(50);
+  });
+
+  test('samples from across the full array, not just the start', async ({ page }) => {
+    const arr = [0,1,2,3,4,5,6,7,8,9];
+    const result = await page.evaluate((a) => window.sampleEvenly(a, 3), arr);
+    expect(result[0]).toBe(0);
+    expect(result[2]).toBe(9);
+    // middle element must come from the middle of the array, not near the start
+    expect(result[1]).toBeGreaterThan(2);
+    expect(result[1]).toBeLessThan(8);
+  });
+});
+
+// ── greedyWaypoints budget ─────────────────────────────────────────────────
+
+test.describe('greedyWaypoints budget', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoApp(page);
+    await waitForList(page);
+  });
+
+  test('includes segment midpoints within budget', async ({ page }) => {
+    const features = INITIAL_GEOJSON.features;
+    const result = await page.evaluate((feats) => {
+      const start = [-1.79, 53.38];
+      return window.greedyWaypoints([], feats, start, start, 500).waypoints.length;
+    }, features);
+    expect(result).toBeGreaterThan(2); // start + at least one midpoint + end
+  });
+
+  test('omits all segments when budget is zero', async ({ page }) => {
+    const features = INITIAL_GEOJSON.features;
+    const result = await page.evaluate((feats) => {
+      const start = [-1.79, 53.38];
+      return window.greedyWaypoints([], feats, start, start, 0).waypoints.length;
+    }, features);
+    expect(result).toBe(2); // only start and end
+  });
+});
+
+// ── Google Maps URL waypoint sampling ─────────────────────────────────────
+
+// 12-segment fixture for testing URL waypoint sampling
+const TWELVE_SEGS = {
+  type: 'FeatureCollection',
+  features: Array.from({ length: 12 }, (_, i) => ({
+    type: 'Feature',
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [-1.79 + i * 0.002, 53.38],
+        [-1.80 + i * 0.002, 53.39],
+        [-1.81 + i * 0.002, 53.40],
+      ],
+    },
+    properties: {
+      name: `Test Road ${i}`, highway: 'primary', maxspeed: 'NSL',
+      length_m: 3000, sinuosity: 0.80, narrow: false,
+      score_sinuosity: 60, score_angular_density: 60, score_corner_variety: 60,
+      score_straight_bend: 70, score_elevation: 80, score_speed_limit: 100,
+      score_camera_free: 100, drive_score: 99 - i,
+    },
+  })),
+};
+
+const MOCK_DIRECTIONS_RESP = {
+  routes: [{
+    geometry: { type: 'LineString', coordinates: [[-1.79, 53.38], [-1.81, 53.40]] },
+    distance: 5000,
+    duration: 600,
+  }],
+};
+
+test.describe('Google Maps URL waypoint sampling', () => {
+  async function planRoute(page) {
+    await page.click('#tab-route');
+    await page.focus('#route-start');
+    await page.evaluate(() => {
+      window.simulateMapClick({ lngLat: { lng: -1.79, lat: 53.38 } });
+    });
+    await page.click('#plan-btn');
+    await page.waitForSelector('.gmaps-btn', { timeout: 5000 });
+    return page.locator('.gmaps-btn').getAttribute('href');
+  }
+
+  test('URL has at most MAX_GMAPS_WP + 2 path parts with 12 segments', async ({ page }) => {
+    await gotoAppWith(page, { segments: TWELVE_SEGS, directions: MOCK_DIRECTIONS_RESP });
+    await waitForList(page);
+    const href = await planRoute(page);
+    // path after /dir/ splits on '/' → count parts
+    const parts = href.replace('https://www.google.com/maps/dir/', '').split('/').filter(Boolean);
+    expect(parts.length).toBeLessThanOrEqual(11); // MAX_GMAPS_WP(9) inner + start + end
+  });
+
+  test('URL includes both start and end coordinates', async ({ page }) => {
+    await gotoAppWith(page, { segments: INITIAL_GEOJSON, directions: MOCK_DIRECTIONS_RESP });
+    await waitForList(page);
+    const href = await planRoute(page);
+    const parts = href.replace('https://www.google.com/maps/dir/', '').split('/').filter(Boolean);
+    // First part = start lat,lng; last part = end lat,lng (loop → same point)
+    expect(parts[0]).toMatch(/^[\d.-]+,[\d.-]+$/);
+    expect(parts[parts.length - 1]).toBe(parts[0]);
   });
 });

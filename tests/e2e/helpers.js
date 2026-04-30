@@ -49,6 +49,7 @@ export const MAPBOX_STUB = `
       return map;
     },
     fitBounds:  () => {},
+    flyTo:      () => {},
     getCanvas:  () => ({ style: {} }),
   };
 
@@ -142,6 +143,34 @@ export async function gotoApp(page, path = '/apexline.html') {
  */
 export async function waitForList(page) {
   await page.waitForSelector('.road-card', { timeout: 5000 });
+}
+
+/**
+ * Navigate to the app with a custom segments fixture and an optional Mapbox
+ * Directions stub response. Registers all routes in the right order so the
+ * specific Directions override wins over the broad api.mapbox.com abort.
+ */
+export async function gotoAppWith(page, { segments, directions = null, path = '/apexline.html' } = {}) {
+  await page.addInitScript({ content: MAPBOX_STUB });
+  // Broad abort first (lower precedence — registered first)
+  await page.route('**/api.mapbox.com/**',    route => route.abort());
+  await page.route('**/events.mapbox.com/**', route => route.abort());
+  // Specific Directions override AFTER broad abort → wins via LIFO
+  if (directions) {
+    await page.route('**/api.mapbox.com/directions/**', route =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+                      body: JSON.stringify(directions) })
+    );
+  }
+  await page.route('**/localhost:8000/config', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+                    body: JSON.stringify({ mapbox_token: 'pk.e2e.stub' }) })
+  );
+  await page.route('**/localhost:8000/segments/cached', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+                    body: JSON.stringify(segments) })
+  );
+  await page.goto(path);
 }
 
 /**
