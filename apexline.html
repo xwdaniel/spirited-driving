@@ -575,6 +575,16 @@ function greedyWaypoints(pinnedFeatures, scoredFeatures, start, end, budgetKm) {
   return { waypoints: route, overrunKm: overrunKm };
 }
 
+function sampleEvenly(arr, n) {
+  if (arr.length <= n) return arr.slice();
+  var result = [];
+  for (var i = 0; i < n; i++)
+    result.push(arr[Math.round(i * (arr.length - 1) / (n - 1))]);
+  return result;
+}
+window.sampleEvenly    = sampleEvenly;
+window.greedyWaypoints = greedyWaypoints;
+
 
 // ── DATA ── Populated when the user searches for a location
 let GEOJSON = { type: "FeatureCollection", features: [] };
@@ -1174,8 +1184,8 @@ document.getElementById('tab-route').addEventListener('click', function() {
       var distKm     = Math.round(route.distance / 100) / 10;
       var durH       = route.duration / 3600;
 
-      // Google Maps URL — top MAX_GMAPS_WP inner waypoints
-      var innerWp = waypoints.slice(1, -1).slice(0, MAX_GMAPS_WP);
+      // Google Maps URL — evenly sampled MAX_GMAPS_WP inner waypoints
+      var innerWp = sampleEvenly(waypoints.slice(1, -1), MAX_GMAPS_WP);
       var gParts  = [startPt[1]+','+startPt[0]];
       innerWp.forEach(function(w) { gParts.push(w[1]+','+w[0]); });
       gParts.push(endPt[1]+','+endPt[0]);
