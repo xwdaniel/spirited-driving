@@ -491,7 +491,90 @@
 </div>
 
 <script type="module">
-import { haversineKm, segmentMidpoint, insertCheapest, greedyWaypoints, MAX_MAPBOX_WP, MAX_GMAPS_WP } from './apexline_route.js';
+// Route helpers inlined from apexline_route.js so the page works when opened as file://
+const MAX_MAPBOX_WP = 23;
+const MAX_GMAPS_WP  = 9;
+
+function haversineKm(lon1, lat1, lon2, lat2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+          Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function segmentMidpoint(coords) {
+  var total = 0;
+  for (var i = 0; i < coords.length - 1; i++)
+    total += haversineKm(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]);
+  var target = total / 2, cum = 0;
+  for (var i = 0; i < coords.length - 1; i++) {
+    var seg = haversineKm(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]);
+    if (cum + seg >= target) {
+      var frac = seg > 0 ? (target - cum) / seg : 0;
+      return [coords[i][0] + frac*(coords[i+1][0]-coords[i][0]),
+              coords[i][1] + frac*(coords[i+1][1]-coords[i][1])];
+    }
+    cum += seg;
+  }
+  return coords[coords.length - 1];
+}
+
+function insertCheapest(route, mid) {
+  var bestCost = Infinity, bestPos = 1;
+  for (var i = 1; i < route.length; i++) {
+    var prev = route[i-1], nxt = route[i];
+    var added = haversineKm(prev[0],prev[1],mid[0],mid[1]) +
+                haversineKm(mid[0],mid[1],nxt[0],nxt[1]) -
+                haversineKm(prev[0],prev[1],nxt[0],nxt[1]);
+    if (added < bestCost) { bestCost = added; bestPos = i; }
+  }
+  route.splice(bestPos, 0, mid);
+  return bestCost;
+}
+
+function greedyWaypoints(pinnedFeatures, scoredFeatures, start, end, budgetKm) {
+  var route = [start, end];
+  var usedKm = haversineKm(start[0], start[1], end[0], end[1]);
+  var overrunKm = 0;
+  var pinnedMids = new Set();
+  for (var pi = 0; pi < pinnedFeatures.length; pi++) {
+    if (route.length - 2 >= MAX_MAPBOX_WP) break;
+    var coords = pinnedFeatures[pi].geometry.coordinates;
+    if (!coords || coords.length < 2) continue;
+    var mid = segmentMidpoint(coords);
+    var key = mid[0].toFixed(5) + ',' + mid[1].toFixed(5);
+    if (pinnedMids.has(key)) continue;
+    pinnedMids.add(key);
+    var cost = insertCheapest(route, mid);
+    usedKm += cost;
+    if (usedKm > budgetKm) overrunKm = usedKm - budgetKm;
+  }
+  var remainingKm = budgetKm - usedKm;
+  for (var fi = 0; fi < scoredFeatures.length; fi++) {
+    if (route.length - 2 >= MAX_MAPBOX_WP) break;
+    var coords = scoredFeatures[fi].geometry.coordinates;
+    if (!coords || coords.length < 2) continue;
+    var mid = segmentMidpoint(coords);
+    var key = mid[0].toFixed(5) + ',' + mid[1].toFixed(5);
+    if (pinnedMids.has(key)) continue;
+    var bestCost = Infinity, bestPos = 1;
+    for (var i = 1; i < route.length; i++) {
+      var prev = route[i-1], nxt = route[i];
+      var added = haversineKm(prev[0],prev[1],mid[0],mid[1]) +
+                  haversineKm(mid[0],mid[1],nxt[0],nxt[1]) -
+                  haversineKm(prev[0],prev[1],nxt[0],nxt[1]);
+      if (added < bestCost) { bestCost = added; bestPos = i; }
+    }
+    if (remainingKm >= bestCost) {
+      route.splice(bestPos, 0, mid);
+      remainingKm -= bestCost;
+    }
+  }
+  return { waypoints: route, overrunKm: overrunKm };
+}
+
 
 // ── DATA ── Populated when the user searches for a location
 let GEOJSON = { type: "FeatureCollection", features: [] };
@@ -667,8 +750,6 @@ function showDetail(f) {
 }
 
 // ── MAP ──
-mapboxgl.accessToken = ''; // set from /config at boot
-
 function scoredGeoJSON() {
   return {
     type: 'FeatureCollection',
@@ -744,9 +825,11 @@ function initMap() {
       map.on('mouseenter', layer, function() { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, function() { map.getCanvas().style.cursor = ''; });
     });
+  });
 
-    // Auto-load data for the user's current location on first visit
-    tryGeolocate();
+  map.on('error', function(e) {
+    var msg = (e && e.error && e.error.message) ? e.error.message : 'Unknown map error';
+    showMapError('Map failed to load: ' + msg);
   });
 }
 
@@ -1199,6 +1282,7 @@ document.getElementById('tab-route').addEventListener('click', function() {
 
 // ── BOOT ──
 renderList();
+tryGeolocate(); // request location immediately — doesn't need the map to be ready
 
 function showMapError(msg) {
   document.getElementById('map').innerHTML =
@@ -1213,8 +1297,16 @@ function showMapError(msg) {
 fetch(API_BASE + '/config')
   .then(function(r) { if (!r.ok) throw new Error('config ' + r.status); return r.json(); })
   .then(function(cfg) {
+    if (typeof mapboxgl === 'undefined') {
+      showMapError('Mapbox GL JS failed to load — check network or ad blocker');
+      return;
+    }
     mapboxgl.accessToken = cfg.mapbox_token;
-    try { initMap(); } catch(e) { showMapError('Map failed to initialise'); }
+    try {
+      initMap();
+    } catch(e) {
+      showMapError('Map failed to initialise: ' + e.message);
+    }
   })
   .catch(function() {
     showMapError('Set MAPBOX_TOKEN env var and restart the server');
