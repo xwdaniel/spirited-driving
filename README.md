@@ -1,6 +1,6 @@
 # Apexline
 
-Finds and scores roads suitable for spirited driving. Given a bounding box, Apexline fetches the road network from OpenStreetMap, locates speed cameras, and scores every road segment across 9 factors — then renders them on an interactive Mapbox GL JS map with score-based filtering.
+Finds and scores roads suitable for spirited driving. Given a bounding box, Apexline fetches the road network from OpenStreetMap, locates speed cameras, and scores every road segment across 7 factors — then renders them on an interactive Mapbox GL JS map with score-based filtering.
 
 ## How it works
 
@@ -8,7 +8,7 @@ Finds and scores roads suitable for spirited driving. Given a bounding box, Apex
 2. **Fetch** speed cameras and junction/interruption nodes from OSM
 3. **Compute** per-edge sinuosity and angular density
 4. **Segment** roads by curvature character using breakpoint detection
-5. **Score** each segment (0–100) across 9 weighted factors
+5. **Score** each segment (0–100) across 7 weighted factors
 6. **Render** scored segments as a choropleth on a filterable map
 
 ### Scoring factors
@@ -19,11 +19,9 @@ Finds and scores roads suitable for spirited driving. Given a bounding box, Apex
 | Angular density | 10% | Turns per metre |
 | Corner variety | 10% | Std dev of angular changes |
 | Straight-to-bend ratio | 10% | Balance vs ~14:3 Tilke optimum |
-| Elevation | 20% | Elevation gain + loss per km (SRTM) |
+| Elevation | 30% | Elevation gain + loss per km (SRTM) |
 | Speed limit | 20% | OSM `maxspeed` tag |
-| Camera-free | 10% | Absence of speed cameras within 500 m |
-| Junction density | 5% | Penalty for traffic signals / stops |
-| Road surface | 5% | Highway class + OSM `smoothness` tag |
+| Camera-free | 10% | Absence of speed cameras within 200 m |
 
 Road types included: `primary`, `secondary`, `tertiary`, `trunk`, and their link variants. Motorways and unclassified lanes are excluded.
 
@@ -33,7 +31,7 @@ Road types included: `primary`, `secondary`, `tertiary`, `trunk`, and their link
 |---|---|
 | Road data | osmnx, Overpass API |
 | Geometry | shapely, geopandas |
-| Elevation | srtm (optional) |
+| Elevation | srtm |
 | Server | FastAPI + uvicorn |
 | Frontend | Vanilla JS, Mapbox GL JS v3.3.0 |
 | Python tests | pytest |
@@ -56,7 +54,13 @@ The frontend requires a Mapbox GL JS token to render the map. Get a free token a
 Set it as an environment variable before starting the server:
 
 ```bash
-export MAPBOX_TOKEN=...
+# macOS / Linux
+export MAPBOX_TOKEN=your_token_here
+```
+
+```powershell
+# Windows (PowerShell)
+$env:MAPBOX_TOKEN = "your_token_here"
 ```
 
 The server exposes the token via `GET /config`, which the frontend fetches on load. Without it the map will not load.
@@ -121,6 +125,6 @@ Key constants at the top of `apexline_pipeline.py`:
 - `ROAD_TYPES` — OSM highway tags to include
 - `WEIGHTS` — scoring factor weights (must sum to 1.0)
 - `MIN_SEGMENT_METRES` — minimum segment length before merging (1500 m)
-- `CAMERA_RADIUS_M` — camera influence radius (500 m)
+- `CAMERA_RADIUS_M` — camera influence radius constant (500 m, defined but currently overridden by `score_cameras` default of 200 m)
 
 The Playwright config sets `--use-gl=swiftshader` so E2E tests run without a GPU.

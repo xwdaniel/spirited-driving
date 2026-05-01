@@ -76,3 +76,17 @@ Single self-contained file (698 lines). No build step. Uses Mapbox GL JS v3.3.0.
 - The Playwright config (`playwright.config.js`) sets `--use-gl=swiftshader` so tests run without a GPU.
 - `apexline_segments.geojson` is the pipeline output file; regenerate with `generate_test_data.py` for offline development.
 - A full architecture and design rationale document lives in `APEXLINE_HANDOFF.md`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
